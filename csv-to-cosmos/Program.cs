@@ -7,6 +7,8 @@ using System.IO;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Azure.Documents.Client;
 using System.Configuration;
+using CsvHelper;
+using System.Globalization;
 
 namespace csv_to_cosmos
 {
@@ -14,20 +16,31 @@ namespace csv_to_cosmos
     {
         static void Main(string[] args)
         {
-            var csvRows = new List<string[]>();
             //get csv data
             string csvFilename = ConfigurationManager.AppSettings["CsvFilename"];
-            using (var csvParser = new TextFieldParser(csvFilename))
+
+            var items = new List<Dictionary<string, string>>();
+            using (var stream = new FileStream(csvFilename, FileMode.Open))
+            using (var reader = new StreamReader(stream))
+            using (var csvReader = new CsvReader(reader, CultureInfo.InvariantCulture))
             {
-                csvParser.SetDelimiters(",");
-                csvParser.HasFieldsEnclosedInQuotes = true;
+                csvReader.Read();
+                csvReader.ReadHeader();
+                string[] headerRow = csvReader.Context.HeaderRecord;
 
-                csvParser.ReadLine(); //skip header row
-
-                while (!csvParser.EndOfData)
+                while (csvReader.Read())
                 {
-                    var fields = csvParser.ReadFields();
-                    csvRows.Add(fields);
+                    var dict = new Dictionary<string, string>();
+                    foreach (string column in headerRow)
+                    {
+                        if (string.IsNullOrEmpty(column))
+                            continue;
+                        string value = csvReader.GetField(column);
+                        if (string.IsNullOrEmpty(value))
+                            continue;
+                        dict.Add(column.ToLower().Trim(), value.ToLower().Trim());
+                    }
+                    items.Add(dict);
                 }
             }
 
@@ -42,21 +55,11 @@ namespace csv_to_cosmos
 
                 using (var client = new DocumentClient(new Uri(endpoint), masterKey))
                 {
-                    foreach (var row in csvRows)
+                    foreach (var row in items)
                     {
-                        dynamic documentDefinition = new
-                        {
-                            Module = row[0],
-                            ComponentType = row[1],
-                            Size = row[2],
-                            SearchParameter = row[3],
-                            SearchValue = row[4],
-                            ReturnAttribute = row[5],
-                            ReturnValue = row[6],
-                            Key = string.Concat(row[0], "-", row[1], "-", row[5])
-                        };
+                        row.Add("Key", string.Concat("-", row["module"], "-", row["returnattribute"]));
 
-                        await client.CreateDocumentAsync(documentCollectionUri, documentDefinition);
+                        await client.CreateDocumentAsync(documentCollectionUri, row);
                     }
                 }
             }).Wait();
