@@ -9,6 +9,8 @@ using Microsoft.Azure.Documents.Client;
 using System.Configuration;
 using CsvHelper;
 using System.Globalization;
+using System.Net.Http;
+using Newtonsoft.Json;
 
 namespace csv_to_cosmos
 {
@@ -46,25 +48,36 @@ namespace csv_to_cosmos
 
             Task.Run(async () =>
             {
-                string endpoint = ConfigurationManager.AppSettings["DocDbEndpoint"];
-                string masterKey = ConfigurationManager.AppSettings["DocDbMasterKey"];
-                string databaseId = ConfigurationManager.AppSettings["DocDbId"];
-                string documentCollection = ConfigurationManager.AppSettings["DocDbCollection"];
-
-                Uri documentCollectionUri = UriFactory.CreateDocumentCollectionUri(databaseId, documentCollection);
-
-                using (var client = new DocumentClient(new Uri(endpoint), masterKey))
+                foreach (var row in items)
                 {
-                    foreach (var row in items)
-                    {
-                        row.Add("Key", string.Concat("-", row["module"], "-", row["returnattribute"]));
+                    row.Add("key", string.Concat("-", row["module"], "-", row["returnattribute"]));
 
-                        await client.CreateDocumentAsync(documentCollectionUri, row);
-                    }
+                    await PostBasicAsync(row);
                 }
             }).Wait();
 
+            Console.WriteLine("Finished");
             Console.ReadLine();
+        }
+
+        private static async Task PostBasicAsync(object content)
+        {
+            using (var client = new HttpClient())
+            using (var request = new HttpRequestMessage(HttpMethod.Put, @"https://powersecure-estimator-services-dev.azurewebsites.net/api/factors/"))
+            {
+                var json = JsonConvert.SerializeObject(content);
+                using (var stringContent = new StringContent(json, Encoding.UTF8, "application/json"))
+                {
+                    request.Content = stringContent;
+
+                    using (var response = await client
+                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                        .ConfigureAwait(false))
+                    {
+                        response.EnsureSuccessStatusCode();
+                    }
+                }
+            }
         }
     }
 }
