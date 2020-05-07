@@ -50,7 +50,10 @@ namespace csv_to_cosmos
             {
                 foreach (var row in items)
                 {
-                    row.Add("key", string.Concat("-", row["module"], "-", row["returnattribute"]));
+                    if (row.ContainsKey("returnattribute"))
+                    {
+                        row.Add("key", string.Concat("-", row["module"], "-", row["returnattribute"]));
+                    }
 
                     await PostBasicAsync(row);
                 }
@@ -60,10 +63,20 @@ namespace csv_to_cosmos
             Console.ReadLine();
         }
 
-        private static async Task PostBasicAsync(object content)
+        private static async Task PostBasicAsync(Dictionary<string,string> content)
         {
+            string uri;
+            if(content.ContainsKey("returnattribute"))
+            {
+                uri = @"https://powersecure-estimator-services-dev.azurewebsites.net/api/factors/";
+            }
+            else
+            {
+                uri = @"https://powersecure-estimator-services-dev.azurewebsites.net/api/functions/";
+            }
+
             using (var client = new HttpClient())
-            using (var request = new HttpRequestMessage(HttpMethod.Put, @"https://powersecure-estimator-services-dev.azurewebsites.net/api/factors/"))
+            using (var request = new HttpRequestMessage(HttpMethod.Put, uri))
             {
                 var json = JsonConvert.SerializeObject(content);
                 using (var stringContent = new StringContent(json, Encoding.UTF8, "application/json"))
